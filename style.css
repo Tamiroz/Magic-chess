@@ -1,13 +1,13 @@
-/* Board container */
 #board {
   display: grid;
   grid-template-columns: repeat(8, 60px);
   grid-template-rows: repeat(8, 60px);
-  border: 2px solid #333;
+  border: 4px solid #4a2c11;
+  border-radius: 8px;
+  box-shadow: 0 0 30px rgba(0, 0, 0, 0.8), 0 0 20px rgba(75, 0, 130, 0.5);
   width: 480px;
   height: 480px;
   margin: 20px auto;
-
 }
 
 /* Squares */
@@ -15,6 +15,13 @@
   width: 60px;
   height: 60px;
   position: relative;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.square:hover {
+  transform: scale(1.05);
+  box-shadow: 0 0 10px rgba(255, 255, 255, 0.6);
+  z-index: 10;
 }
 
 /* Enchanted‐forest board colors */
@@ -42,17 +49,19 @@
   z-index: 2;
 }
 
-/* highlight the selected piece’s square */
 .square.selected {
-  outline: 2px solid yellow;
+  outline: 3px solid #ffea00;
+  box-shadow: 0 0 15px #ffea00, inset 0 0 15px #ffea00;
+  z-index: 5;
 }
 
 /* dot for each legal move */
 .dot {
   position: absolute;
-  width: 12px;
-  height: 12px;
-  background: rgba(0, 0, 0, 0.5);
+  width: 14px;
+  height: 14px;
+  background: radial-gradient(circle, rgba(255, 234, 0, 0.8) 0%, rgba(255, 165, 0, 0.4) 100%);
+  box-shadow: 0 0 8px #ffea00;
   border-radius: 50%;
   top: 50%;
   left: 50%;
@@ -117,6 +126,50 @@
   margin: 16px 0;
 }
 
+#effect-notification {
+  position: absolute;
+  top: 100px;
+  width: 100%;
+  text-align: center;
+  font-family: 'Poppins', sans-serif;
+  font-size: 2.5rem;
+  font-weight: bold;
+  color: #fff;
+  pointer-events: none;
+  z-index: 20;
+  opacity: 0;
+  transform: translateY(-20px);
+}
+
+.show-notification {
+  animation: notifAnim 2s ease-out forwards;
+}
+
+@keyframes notifAnim {
+  0% {
+    opacity: 0;
+    transform: translateY(-20px) scale(0.8);
+  }
+
+  10% {
+    opacity: 1;
+    transform: translateY(0) scale(1.1);
+  }
+
+  20% {
+    transform: scale(1);
+  }
+
+  80% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  100% {
+    opacity: 0;
+    transform: translateY(-20px);
+  }
+}
 
 body {
   margin: 0;
@@ -208,8 +261,15 @@ body {
 }
 
 @keyframes pulseShield {
-  0% { transform: scale(0.95); opacity: 0.8; }
-  100% { transform: scale(1.05); opacity: 1; }
+  0% {
+    transform: scale(0.95);
+    opacity: 0.8;
+  }
+
+  100% {
+    transform: scale(1.05);
+    opacity: 1;
+  }
 }
 
 .tornado-src {
@@ -217,8 +277,15 @@ body {
 }
 
 @keyframes spinOut {
-  0% { transform: scale(1) rotate(0deg); opacity: 1; }
-  100% { transform: scale(0) rotate(720deg); opacity: 0; }
+  0% {
+    transform: scale(1) rotate(0deg);
+    opacity: 1;
+  }
+
+  100% {
+    transform: scale(0) rotate(720deg);
+    opacity: 0;
+  }
 }
 
 .tornado-dest {
@@ -226,8 +293,15 @@ body {
 }
 
 @keyframes spinIn {
-  0% { transform: scale(0) rotate(-720deg); opacity: 0; }
-  100% { transform: scale(1) rotate(0deg); opacity: 1; }
+  0% {
+    transform: scale(0) rotate(-720deg);
+    opacity: 0;
+  }
+
+  100% {
+    transform: scale(1) rotate(0deg);
+    opacity: 1;
+  }
 }
 
 .resurrected {
@@ -235,7 +309,74 @@ body {
 }
 
 @keyframes glowUp {
-  0% { opacity: 0; filter: drop-shadow(0 0 20px #fff); transform: translateY(20px); }
-  50% { opacity: 1; filter: drop-shadow(0 0 30px #0f0); transform: translateY(-5px); }
-  100% { filter: drop-shadow(0 0 0px transparent); transform: translateY(0); }
+  0% {
+    opacity: 0;
+    filter: drop-shadow(0 0 20px #fff);
+    transform: translateY(20px);
+  }
+
+  50% {
+    opacity: 1;
+    filter: drop-shadow(0 0 30px #0f0);
+    transform: translateY(-5px);
+  }
+
+  100% {
+    filter: drop-shadow(0 0 0px transparent);
+    transform: translateY(0);
+  }
+}
+
+.swap-anim {
+  animation: swapAnim 0.6s ease-in-out;
+  z-index: 5 !important;
+}
+
+@keyframes swapAnim {
+  0% {
+    transform: scale(1);
+    filter: hue-rotate(0deg);
+  }
+
+  50% {
+    transform: scale(1.5) rotate(180deg);
+    filter: hue-rotate(180deg);
+  }
+
+  100% {
+    transform: scale(1) rotate(360deg);
+    filter: hue-rotate(360deg);
+  }
+}
+
+.mindcontrol-anim {
+  animation: mindControlAnim 1s ease-out;
+  z-index: 5 !important;
+}
+
+@keyframes mindControlAnim {
+  0% {
+    filter: drop-shadow(0 0 20px #ff00ff) sepia(100%) hue-rotate(280deg);
+    transform: scale(1.2);
+  }
+
+  100% {
+    filter: drop-shadow(0 0 0px transparent);
+    transform: scale(1);
+  }
+}
+
+.square.timewarp-anim {
+  animation: timeWarpAnim 0.5s ease-out;
+}
+
+@keyframes timeWarpAnim {
+  0% {
+    background-color: #00ffff;
+    box-shadow: inset 0 0 30px #00ffff;
+  }
+
+  100% {
+    background-color: transparent;
+  }
 }

@@ -11,6 +11,35 @@ let activeEffects = {
   portal: null
 };
 
+let stateHistory = [];
+let pendingAnimations = [];
+
+function saveState() {
+  stateHistory.push({
+    board: JSON.stringify(board),
+    turn,
+    capturedByWhite: [...capturedByWhite],
+    capturedByBlack: [...capturedByBlack],
+    activeEffects: JSON.stringify(activeEffects)
+  });
+}
+
+function restoreState() {
+  const prevState = stateHistory.pop();
+  board = JSON.parse(prevState.board);
+  turn = prevState.turn;
+  capturedByWhite = prevState.capturedByWhite;
+  capturedByBlack = prevState.capturedByBlack;
+  activeEffects = JSON.parse(prevState.activeEffects);
+
+  if (activeEffects.portal) {
+    const { a, b } = activeEffects.portal;
+    if (board[a.r][a.c] && board[b.r][b.c]) {
+      board[b.r][b.c] = board[a.r][a.c];
+    }
+  }
+}
+
 // initial piece layout (lowercase=black, uppercase=white)
 const initial = [
   ['r', 'n', 'b', 'q', 'k', 'b', 'n', 'r'],
@@ -42,6 +71,7 @@ function initBoard() {
   capturedByWhite = [];
   capturedByBlack = [];
   activeEffects = { portal: null };
+  stateHistory = [];
   renderBoard();
   updateCapturedDisplays();
 }
@@ -98,9 +128,18 @@ function renderBoard() {
         }
       }
 
+      // Add pending animations
+      const anims = pendingAnimations.filter(a => a.r === r && a.c === c);
+      for (const a of anims) {
+        sq.classList.add(a.animClass);
+      }
+
       boardElement.appendChild(sq);
     }
   }
+
+  // Clear pending animations so they only play once
+  pendingAnimations = [];
 }
 
 // ====== MAGICAL EFFECTS ======
@@ -108,10 +147,12 @@ function advanceTurnEffects() {
   if (SIMULATING) return;
 
   // Decrement freeze and shield
+  const processed = new Set();
   for (let r = 0; r < 8; r++) {
     for (let c = 0; c < 8; c++) {
       const p = board[r][c];
-      if (p) {
+      if (p && !processed.has(p)) {
+        processed.add(p);
         if (p.frozen > 0) p.frozen--;
         if (p.shielded > 0) p.shielded--;
       }
@@ -123,6 +164,11 @@ function advanceTurnEffects() {
     activeEffects.portal.turnsLeft--;
     if (activeEffects.portal.turnsLeft <= 0) {
       const { a, b } = activeEffects.portal;
+      const p = board[a.r][a.c];
+      if (p && p.type !== 'boulder') {
+        if (p.color === 'white') capturedByBlack.push(p);
+        else capturedByWhite.push(p);
+      }
       if (board[a.r][a.c]) board[a.r][a.c] = null;
       if (board[b.r][b.c]) board[b.r][b.c] = null;
       activeEffects.portal = null;
@@ -130,20 +176,34 @@ function advanceTurnEffects() {
   }
 }
 
+function showNotification(text, colorHex) {
+  const notif = document.getElementById('effect-notification');
+  notif.textContent = text;
+  notif.style.textShadow = `0 0 10px ${colorHex}, 0 0 20px ${colorHex}`;
+  notif.classList.remove('show-notification');
+  // trigger reflow to restart animation
+  void notif.offsetWidth;
+  notif.classList.add('show-notification');
+}
+
 function applyRandomEffect() {
   if (SIMULATING) return;
 
-  // 70% chance to trigger any magic
-  if (Math.random() > 0.70) return;
+  // 1/6 chance to trigger any magic per turn (~16.6%)
+  if (Math.random() > 1 / 6) return;
 
+  // Weights strictly adjusted by strength (higher weight = more common, lower = rarer)
   const effects = [
-    { name: 'lightning', weight: 10 },
-    { name: 'freeze', weight: 10 },
-    { name: 'boulder', weight: 8 },
-    { name: 'tornado', weight: 8 },
-    { name: 'portal', weight: 4 },
-    { name: 'resurrection', weight: 4 },
-    { name: 'shield', weight: 4 }
+    { name: 'boulder', weight: 15 },       // Mild: just blocks a square
+    { name: 'freeze', weight: 12 },        // Mild: immobilizes one piece
+    { name: 'shield', weight: 12 },        // Mild: protective buff
+    { name: 'portal', weight: 8 },         // Moderate: tactical map change
+    { name: 'tornado', weight: 6 },        // Moderate: unexpected reposition
+    { name: 'lightning', weight: 5 },      // Strong: destroys a piece
+    { name: 'swap', weight: 3 },           // Very Strong: ruins positional play
+    { name: 'resurrection', weight: 3 },   // Very Strong: brings back captured pieces
+    { name: 'mindcontrol', weight: 1 },    // Game-Changing: steals an enemy piece
+    { name: 'timewarp', weight: 1 }        // Game-Changing: cancels the entire turn
   ];
 
   const totalWeight = effects.reduce((sum, e) => sum + e.weight, 0);
@@ -185,22 +245,31 @@ function applyRandomEffect() {
         }
       }
     }
-    const el = boardElement.children[sq.r * 8 + sq.c];
-    if (el) {
-      el.classList.add('lightning');
-      setTimeout(() => el.classList.remove('lightning'), 500);
-    }
+    pendingAnimations.push({ r: sq.r, c: sq.c, animClass: 'lightning' });
+    setTimeout(() => {
+      const idx = sq.r * 8 + sq.c;
+      if (boardElement.children[idx]) boardElement.children[idx].classList.remove('lightning');
+    }, 500);
+    showNotification('⚡ Lightning Strike!', '#ffff00');
   }
   else if (effect === 'freeze') {
     if (validPieces.length > 0) {
       const target = validPieces[Math.floor(Math.random() * validPieces.length)];
       target.p.frozen = 2; // frozen until player's next move finishes
+      showNotification('❄️ Freeze!', '#00ffff');
     }
   }
   else if (effect === 'boulder') {
     if (emptySquares.length > 0) {
       const target = emptySquares[Math.floor(Math.random() * emptySquares.length)];
-      board[target.r][target.c] = { type: 'boulder', color: 'neutral', hasMoved: true, frozen: 0, shielded: 0 };
+      const bPiece = { type: 'boulder', color: 'neutral', hasMoved: true, frozen: 0, shielded: 0 };
+      board[target.r][target.c] = bPiece;
+      if (activeEffects.portal) {
+        const { a, b } = activeEffects.portal;
+        if (target.r === a.r && target.c === a.c) board[b.r][b.c] = bPiece;
+        if (target.r === b.r && target.c === b.c) board[a.r][a.c] = bPiece;
+      }
+      showNotification('🪨 Boulder Dropped!', '#a9a9a9');
     }
   }
   else if (effect === 'portal') {
@@ -211,49 +280,67 @@ function applyRandomEffect() {
         b: emptySquares[1],
         turnsLeft: 4 // Lasts for 2 full rounds
       };
+      showNotification('🌀 Portals Opened!', '#8a2be2');
     }
   }
   else if (effect === 'tornado') {
     if (validPieces.length > 0 && emptySquares.length > 0) {
       const target = validPieces[Math.floor(Math.random() * validPieces.length)];
       const dest = emptySquares[Math.floor(Math.random() * emptySquares.length)];
-      
+
       board[dest.r][dest.c] = target.p;
       board[target.r][target.c] = null;
-      
-      const srcEl = boardElement.children[target.r * 8 + target.c];
-      const destEl = boardElement.children[dest.r * 8 + dest.c];
-      if (srcEl) srcEl.classList.add('tornado-src');
-      if (destEl) destEl.classList.add('tornado-dest');
+
+      if (activeEffects.portal) {
+        const { a, b } = activeEffects.portal;
+        if (target.r === a.r && target.c === a.c) board[b.r][b.c] = null;
+        if (target.r === b.r && target.c === b.c) board[a.r][a.c] = null;
+
+        if (dest.r === a.r && dest.c === a.c) board[b.r][b.c] = target.p;
+        if (dest.r === b.r && dest.c === b.c) board[a.r][a.c] = target.p;
+      }
+
+      pendingAnimations.push({ r: target.r, c: target.c, animClass: 'tornado-src' });
+      pendingAnimations.push({ r: dest.r, c: dest.c, animClass: 'tornado-dest' });
       setTimeout(() => {
-        if (srcEl) srcEl.classList.remove('tornado-src');
-        if (destEl) destEl.classList.remove('tornado-dest');
+        const srcIdx = target.r * 8 + target.c;
+        const destIdx = dest.r * 8 + dest.c;
+        if (boardElement.children[srcIdx]) boardElement.children[srcIdx].classList.remove('tornado-src');
+        if (boardElement.children[destIdx]) boardElement.children[destIdx].classList.remove('tornado-dest');
       }, 800);
+      showNotification('🌪️ Tornado!', '#ffffff');
     }
   }
   else if (effect === 'resurrection') {
     const bothCaptured = capturedByWhite.concat(capturedByBlack);
     if (bothCaptured.length > 0 && emptySquares.length > 0) {
-      const isWhiteList = capturedByBlack.length === 0 ? true : 
-                          (capturedByWhite.length === 0 ? false : 
-                           Math.random() < (capturedByWhite.length / bothCaptured.length));
-      
+      const isWhiteList = capturedByBlack.length === 0 ? true :
+        (capturedByWhite.length === 0 ? false :
+          Math.random() < (capturedByWhite.length / bothCaptured.length));
+
       const targetList = isWhiteList ? capturedByWhite : capturedByBlack;
       if (targetList.length > 0) {
         const pIdx = Math.floor(Math.random() * targetList.length);
         const p = targetList.splice(pIdx, 1)[0];
         const dest = emptySquares[Math.floor(Math.random() * emptySquares.length)];
-        
+
         p.hasMoved = true;
         p.frozen = 0;
         p.shielded = 0;
         board[dest.r][dest.c] = p;
-        
-        const destEl = boardElement.children[dest.r * 8 + dest.c];
-        if (destEl) {
-          destEl.classList.add('resurrected');
-          setTimeout(() => destEl.classList.remove('resurrected'), 1000);
+
+        if (activeEffects.portal) {
+          const { a, b } = activeEffects.portal;
+          if (dest.r === a.r && dest.c === a.c) board[b.r][b.c] = p;
+          if (dest.r === b.r && dest.c === b.c) board[a.r][a.c] = p;
         }
+
+        pendingAnimations.push({ r: dest.r, c: dest.c, animClass: 'resurrected' });
+        setTimeout(() => {
+          const destIdx = dest.r * 8 + dest.c;
+          if (boardElement.children[destIdx]) boardElement.children[destIdx].classList.remove('resurrected');
+        }, 1000);
+        showNotification('✨ Resurrection!', '#00ff00');
       }
     }
   }
@@ -261,7 +348,67 @@ function applyRandomEffect() {
     if (validPieces.length > 0) {
       const target = validPieces[Math.floor(Math.random() * validPieces.length)];
       target.p.shielded = 3; // shielded for 3 half-turns
+      showNotification('🛡️ Shield Applied!', '#ffd700');
     }
+  }
+  else if (effect === 'swap') {
+    const whitePieces = validPieces.filter(vp => vp.p.color === 'white');
+    const blackPieces = validPieces.filter(vp => vp.p.color === 'black');
+    if (whitePieces.length > 0 && blackPieces.length > 0) {
+      const w = whitePieces[Math.floor(Math.random() * whitePieces.length)];
+      const b = blackPieces[Math.floor(Math.random() * blackPieces.length)];
+
+      board[w.r][w.c] = b.p;
+      board[b.r][b.c] = w.p;
+
+      if (activeEffects.portal) {
+        const { a, b: pb } = activeEffects.portal;
+        if (w.r === a.r && w.c === a.c) board[pb.r][pb.c] = b.p;
+        if (w.r === pb.r && w.c === pb.c) board[a.r][a.c] = b.p;
+        if (b.r === a.r && b.c === a.c) board[pb.r][pb.c] = w.p;
+        if (b.r === pb.r && b.c === pb.c) board[a.r][a.c] = w.p;
+      }
+
+      pendingAnimations.push({ r: w.r, c: w.c, animClass: 'swap-anim' });
+      pendingAnimations.push({ r: b.r, c: b.c, animClass: 'swap-anim' });
+      setTimeout(() => {
+        const wIdx = w.r * 8 + w.c;
+        const bIdx = b.r * 8 + b.c;
+        if (boardElement.children[wIdx]) boardElement.children[wIdx].classList.remove('swap-anim');
+        if (boardElement.children[bIdx]) boardElement.children[bIdx].classList.remove('swap-anim');
+      }, 600);
+      showNotification('🔄 Pieces Swapped!', '#ff8c00');
+    }
+  }
+  else if (effect === 'mindcontrol') {
+    const playerThatJustMoved = turn === 'white' ? 'black' : 'white';
+    const enemyPieces = validPieces.filter(vp => vp.p.color === turn && vp.p.type !== 'k');
+    if (enemyPieces.length > 0) {
+      const target = enemyPieces[Math.floor(Math.random() * enemyPieces.length)];
+      target.p.color = playerThatJustMoved;
+
+      pendingAnimations.push({ r: target.r, c: target.c, animClass: 'mindcontrol-anim' });
+      setTimeout(() => {
+        const idx = target.r * 8 + target.c;
+        if (boardElement.children[idx]) boardElement.children[idx].classList.remove('mindcontrol-anim');
+      }, 1000);
+      showNotification('👁️ Mind Control!', '#ff00ff');
+    }
+  }
+  else if (effect === 'timewarp' && stateHistory.length > 0) {
+    const turnsToRewind = Math.min(stateHistory.length, Math.floor(Math.random() * 2) + 2); // 2 or 3 turns
+    for (let i = 0; i < turnsToRewind; i++) {
+      restoreState();
+    }
+    for (let r = 0; r < 8; r++) {
+      for (let c = 0; c < 8; c++) {
+        pendingAnimations.push({ r, c, animClass: 'timewarp-anim' });
+      }
+    }
+    setTimeout(() => {
+      Array.from(boardElement.children).forEach(el => el.classList.remove('timewarp-anim'));
+    }, 500);
+    showNotification(`⏳ Time Warp! (-${turnsToRewind} turns)`, '#00ffff');
   }
 }
 
@@ -280,6 +427,7 @@ function onSquareClick(e) {
   if (selected) {
     const move = legalMoves.find(m => m.r === r && m.c === c);
     if (move) {
+      if (!SIMULATING) saveState();
       movePiece(selected, move);
       turn = (turn === 'white') ? 'black' : 'white';
 
@@ -360,7 +508,10 @@ function getLegalMovesCore(r, c) {
         if (!target && lastMove?.piece?.type === 'p') {
           const lm = lastMove;
           if (lm.from.r === r + 2 * sign && lm.to.r === r && lm.to.c === nc) {
-            moves.push({ r: nr, c: nc, enPassant: true });
+            const epVictim = board[r][nc];
+            if (epVictim && epVictim.shielded === 0) {
+              moves.push({ r: nr, c: nc, enPassant: true });
+            }
           }
         }
       }
@@ -477,7 +628,7 @@ function canCastle(r, c, side) {
   const p = board[r][c];
   const rookC = side === 'king' ? 7 : 0;
   const rook = board[r][rookC];
-  if (!rook || rook.type !== 'r' || rook.color !== p.color || rook.hasMoved) return false;
+  if (!rook || rook.type !== 'r' || rook.color !== p.color || rook.hasMoved || rook.frozen > 0) return false;
   const dir = side === 'king' ? 1 : -1;
   for (let i = 1; i < (side === 'king' ? 3 : 4); i++) {
     const nc = c + dir * i;
@@ -567,6 +718,13 @@ function wouldBeInCheck(r, c, move) {
   const inChk = p ? isInCheck(p.color) : false;
 
   board = JSON.parse(boardSnap);
+  if (activeEffects.portal) {
+    const { a, b } = activeEffects.portal;
+    if (board[a.r][a.c] && board[b.r][b.c]) {
+      board[b.r][b.c] = board[a.r][a.c];
+    }
+  }
+
   lastMove = lastSnap || null;
   capturedByWhite = capWhiteSnap;
   capturedByBlack = capBlackSnap;
