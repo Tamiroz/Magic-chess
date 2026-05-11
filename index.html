@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@700&display=swap" rel="stylesheet">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Web Chess Game</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+  <!-- Magic Chess logo -->
+  <h1 id="site-title">Magic Chess</h1>
+
+  <!-- Captured by Black (White’s captured pieces) -->
+  <div id="captured-black" class="captured-row"></div>
+
+  <!-- The board itself -->
+  <div id="board"></div>
+
+  <!-- Captured by White (Black’s captured pieces) -->
+  <div id="captured-white" class="captured-row"></div>
+
+  <!-- Checkmate message + restart -->
+  <div id="game-over" class="hidden">
+    <div id="game-over-msg"></div>
+    <button id="restart-btn">Restart Game</button>
+  </div>
+
+  <script src="script.js" defer></script>
+</body>
+
+</html>
